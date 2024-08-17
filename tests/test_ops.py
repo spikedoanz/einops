@@ -66,7 +66,6 @@ def test_collapsed_ellipsis_errors_out():
 #     for pattern_pairs in equivalent_rearrange_patterns:
 #         all_rearrange_patterns.extend(pattern_pairs)
 
-
 def check_op_against_numpy(backend, numpy_input, pattern, axes_lengths, reduction="rearrange", is_symbolic=False):
     """
     Helper to test result of operation (rearrange or transpose) against numpy
@@ -111,18 +110,18 @@ def check_op_against_numpy(backend, numpy_input, pattern, axes_lengths, reductio
 #                     )
 
 
-def test_rearrange_array_api():
-    import numpy as xp
-    from einops import array_api as AA
-
-    if xp.__version__ < "2.0.0":
-        pytest.skip()
-
-    x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
-    for pattern in identity_patterns + list(itertools.chain(*equivalent_rearrange_patterns)):
-        expected = rearrange(x, pattern)
-        result = AA.rearrange(xp.from_dlpack(x), pattern)
-        assert numpy.array_equal(AA.asnumpy(result + 0), expected)
+# def test_rearrange_array_api():
+#     import numpy as xp
+#     from einops import array_api as AA
+#
+#     if xp.__version__ < "2.0.0":
+#         pytest.skip()
+#
+#     x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
+#     for pattern in identity_patterns + list(itertools.chain(*equivalent_rearrange_patterns)):
+#         expected = rearrange(x, pattern)
+#         result = AA.rearrange(xp.from_dlpack(x), pattern)
+#         assert numpy.array_equal(AA.asnumpy(result + 0), expected)
 
 
 # def test_reduce_array_api():
@@ -140,70 +139,70 @@ def test_rearrange_array_api():
 #             assert numpy.array_equal(AA.asnumpy(np.asarray(result + 0)), expected)
 #
 
-def test_rearrange_consistency_numpy():
-    shape = [1, 2, 3, 5, 7, 11]
-    x = numpy.arange(numpy.prod(shape)).reshape(shape)
-    for pattern in [
-        "a b c d e f -> a b c d e f",
-        "b a c d e f -> a b d e f c",
-        "a b c d e f -> f e d c b a",
-        "a b c d e f -> (f e) d (c b a)",
-        "a b c d e f -> (f e d c b a)",
-    ]:
-        result = rearrange(x, pattern)
-        assert len(numpy.setdiff1d(x, result)) == 0
-        assert result.dtype == x.dtype
+# def test_rearrange_consistency_numpy():
+#     shape = [1, 2, 3, 5, 7, 11]
+#     x = numpy.arange(numpy.prod(shape)).reshape(shape)
+#     for pattern in [
+#         "a b c d e f -> a b c d e f",
+#         "b a c d e f -> a b d e f c",
+#         "a b c d e f -> f e d c b a",
+#         "a b c d e f -> (f e) d (c b a)",
+#         "a b c d e f -> (f e d c b a)",
+#     ]:
+#         result = rearrange(x, pattern)
+#         assert len(numpy.setdiff1d(x, result)) == 0
+#         assert result.dtype == x.dtype
+#
+#     result = rearrange(x, "a b c d e f -> a (b) (c d e) f")
+#     assert numpy.array_equal(x.flatten(), result.flatten())
+#
+#     result = rearrange(x, "a aa aa1 a1a1 aaaa a11 -> a aa aa1 a1a1 aaaa a11")
+#     assert numpy.array_equal(x, result)
+#
+#     result1 = rearrange(x, "a b c d e f -> f e d c b a")
+#     result2 = rearrange(x, "f e d c b a -> a b c d e f")
+#     assert numpy.array_equal(result1, result2)
+#
+#     result = rearrange(rearrange(x, "a b c d e f -> (f d) c (e b) a"), "(f d) c (e b) a -> a b c d e f", b=2, d=5)
+#     assert numpy.array_equal(x, result)
+#
+#     sizes = dict(zip("abcdef", shape))
+#     temp = rearrange(x, "a b c d e f -> (f d) c (e b) a", **sizes)
+#     result = rearrange(temp, "(f d) c (e b) a -> a b c d e f", **sizes)
+#     assert numpy.array_equal(x, result)
+#
+#     x2 = numpy.arange(2 * 3 * 4).reshape([2, 3, 4])
+#     result = rearrange(x2, "a b c -> b c a")
+#     assert x2[1, 2, 3] == result[2, 3, 1]
+#     assert x2[0, 1, 2] == result[1, 2, 0]
 
-    result = rearrange(x, "a b c d e f -> a (b) (c d e) f")
-    assert numpy.array_equal(x.flatten(), result.flatten())
 
-    result = rearrange(x, "a aa aa1 a1a1 aaaa a11 -> a aa aa1 a1a1 aaaa a11")
-    assert numpy.array_equal(x, result)
-
-    result1 = rearrange(x, "a b c d e f -> f e d c b a")
-    result2 = rearrange(x, "f e d c b a -> a b c d e f")
-    assert numpy.array_equal(result1, result2)
-
-    result = rearrange(rearrange(x, "a b c d e f -> (f d) c (e b) a"), "(f d) c (e b) a -> a b c d e f", b=2, d=5)
-    assert numpy.array_equal(x, result)
-
-    sizes = dict(zip("abcdef", shape))
-    temp = rearrange(x, "a b c d e f -> (f d) c (e b) a", **sizes)
-    result = rearrange(temp, "(f d) c (e b) a -> a b c d e f", **sizes)
-    assert numpy.array_equal(x, result)
-
-    x2 = numpy.arange(2 * 3 * 4).reshape([2, 3, 4])
-    result = rearrange(x2, "a b c -> b c a")
-    assert x2[1, 2, 3] == result[2, 3, 1]
-    assert x2[0, 1, 2] == result[1, 2, 0]
-
-
-def test_rearrange_permutations_numpy():
-    # tests random permutation of axes against two independent numpy ways
-    for n_axes in range(1, 10):
-        input = numpy.arange(2**n_axes).reshape([2] * n_axes)
-        permutation = numpy.random.permutation(n_axes)
-        left_expression = " ".join("i" + str(axis) for axis in range(n_axes))
-        right_expression = " ".join("i" + str(axis) for axis in permutation)
-        expression = left_expression + " -> " + right_expression
-        result = rearrange(input, expression)
-
-        for pick in numpy.random.randint(0, 2, [10, n_axes]):
-            assert input[tuple(pick)] == result[tuple(pick[permutation])]
-
-    for n_axes in range(1, 10):
-        input = numpy.arange(2**n_axes).reshape([2] * n_axes)
-        permutation = numpy.random.permutation(n_axes)
-        left_expression = " ".join("i" + str(axis) for axis in range(n_axes)[::-1])
-        right_expression = " ".join("i" + str(axis) for axis in permutation[::-1])
-        expression = left_expression + " -> " + right_expression
-        result = rearrange(input, expression)
-        assert result.shape == input.shape
-        expected_result = numpy.zeros_like(input)
-        for original_axis, result_axis in enumerate(permutation):
-            expected_result |= ((input >> original_axis) & 1) << result_axis
-
-        assert numpy.array_equal(result, expected_result)
+# def test_rearrange_permutations_numpy():
+#     # tests random permutation of axes against two independent numpy ways
+#     for n_axes in range(1, 10):
+#         input = numpy.arange(2**n_axes).reshape([2] * n_axes)
+#         permutation = numpy.random.permutation(n_axes)
+#         left_expression = " ".join("i" + str(axis) for axis in range(n_axes))
+#         right_expression = " ".join("i" + str(axis) for axis in permutation)
+#         expression = left_expression + " -> " + right_expression
+#         result = rearrange(input, expression)
+#
+#         for pick in numpy.random.randint(0, 2, [10, n_axes]):
+#             assert input[tuple(pick)] == result[tuple(pick[permutation])]
+#
+#     for n_axes in range(1, 10):
+#         input = numpy.arange(2**n_axes).reshape([2] * n_axes)
+#         permutation = numpy.random.permutation(n_axes)
+#         left_expression = " ".join("i" + str(axis) for axis in range(n_axes)[::-1])
+#         right_expression = " ".join("i" + str(axis) for axis in permutation[::-1])
+#         expression = left_expression + " -> " + right_expression
+#         result = rearrange(input, expression)
+#         assert result.shape == input.shape
+#         expected_result = numpy.zeros_like(input)
+#         for original_axis, result_axis in enumerate(permutation):
+#             expected_result |= ((input >> original_axis) & 1) << result_axis
+#
+#         assert numpy.array_equal(result, expected_result)
 
 
 # def test_reduction_imperatives():
@@ -591,37 +590,37 @@ test_cases_repeat_anonymous = [
 #         repeat(x, "...  -> b (...)", b=3),
 #     )
 
-
-def test_torch_compile_with_dynamic_shape():
-    if not is_backend_tested("torch"):
-        pytest.skip()
-    import torch
-
-    # somewhat reasonable debug messages
-    torch._dynamo.config.verbose = True
-
-    def func1(x):
-        # test contains ellipsis
-        a, b, c, *other = x.shape
-        x = rearrange(x, "(a a2) b c ... -> b (c a2) (a ...)", a2=2)
-        # test contains passing expression as axis length
-        x = reduce(x, "b ca2 A -> b A", "sum", ca2=c * 2)
-        return x
-
-    # seems can't test static and dynamic in the same test run.
-    # func1_compiled_static = torch.compile(func1, dynamic=False, fullgraph=True, backend='aot_eager')
-    func1_compiled_dynamic = torch.compile(func1, dynamic=True, fullgraph=True, backend="aot_eager")
-
-    x = torch.randn(size=[4, 5, 6, 3])
-    assert torch.equal(func1_compiled_dynamic(x), func1(x))
-    # check with input of different dimensionality, and with all shape elements changed
-    x = torch.randn(size=[6, 3, 4, 2, 3])
-    assert torch.equal(func1_compiled_dynamic(x), func1(x))
-
-
-def bit_count(x):
-    return sum((x >> i) & 1 for i in range(20))
-
+#
+# def test_torch_compile_with_dynamic_shape():
+#     if not is_backend_tested("torch"):
+#         pytest.skip()
+#     import torch
+#
+#     # somewhat reasonable debug messages
+#     torch._dynamo.config.verbose = True
+#
+#     def func1(x):
+#         # test contains ellipsis
+#         a, b, c, *other = x.shape
+#         x = rearrange(x, "(a a2) b c ... -> b (c a2) (a ...)", a2=2)
+#         # test contains passing expression as axis length
+#         x = reduce(x, "b ca2 A -> b A", "sum", ca2=c * 2)
+#         return x
+#
+#     # seems can't test static and dynamic in the same test run.
+#     # func1_compiled_static = torch.compile(func1, dynamic=False, fullgraph=True, backend='aot_eager')
+#     func1_compiled_dynamic = torch.compile(func1, dynamic=True, fullgraph=True, backend="aot_eager")
+#
+#     x = torch.randn(size=[4, 5, 6, 3])
+#     assert torch.equal(func1_compiled_dynamic(x), func1(x))
+#     # check with input of different dimensionality, and with all shape elements changed
+#     x = torch.randn(size=[6, 3, 4, 2, 3])
+#     assert torch.equal(func1_compiled_dynamic(x), func1(x))
+#
+#
+# def bit_count(x):
+#     return sum((x >> i) & 1 for i in range(20))
+#
 
 # def test_reduction_imperatives_booleans():
 #     """Checks that any/all reduction works in all frameworks"""

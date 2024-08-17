@@ -367,12 +367,6 @@ class TinygradBackend(AbstractBackend):
     def einsum(self, pattern, *x):
         return self.tinygrad.Tensor.einsum(pattern, *x)
 
-
-
-if typing.TYPE_CHECKING:
-    # for docstrings in pycharm
-    import numpy as np  # noqa E401
-
 Tensor = TypeVar("Tensor")
 ReductionCallable = Callable[[Tensor, Tuple[int, ...]], Tensor]
 Reduction = Union[str, ReductionCallable]
@@ -716,7 +710,9 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         if init_shapes is not None:
             tensor = tensor.reshape(init_shapes)
         if axes_reordering is not None:
-            tensor = backend.transpose(tensor, axes_reordering)
+            if type(tensor) == TGTensor:
+                tensor = tensor.permute(axes_reordering)
+            # tensor = backend.transpose(tensor, axes_reordering)
         if len(reduced_axes) > 0:
             tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes, backend=backend)
         if len(added_axes) > 0:
