@@ -723,7 +723,6 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
             tensor = TGTensor.stack(tensors)
         else:
             backend = get_backend(tensor)
-            tensor = TGTensor(tensor)
 
         hashable_axes_lengths = tuple(axes_lengths.items())
         shape = tensor.shape
