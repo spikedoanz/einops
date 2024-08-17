@@ -214,7 +214,7 @@ def test_rearrange_permutations_numpy():
 def test_reduction_imperatives():
     for backend in imp_op_backends:
         print("Reduction tests for ", backend.framework_name)
-        for reduction in ("rearrange",)
+        for reduction in ("rearrange",):
             # slight redundancy for simpler order - numpy version is evaluated multiple times
             input = numpy.arange(2 * 3 * 4 * 5 * 6, dtype="int64").reshape([2, 3, 4, 5, 6])
             if reduction in ["mean", "prod"]:
