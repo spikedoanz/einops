@@ -249,7 +249,6 @@ def _reconstruct_from_shape_uncached(
 ) -> CookedRecipe:
     """
     Reconstruct all actual parameters using shape.
-    Shape is a tuple that may contain integers, shape symbols (tf, theano) and UnknownSize (tf, previously mxnet)
     known axes can be integers or symbols, but not Nones.
     """
     # magic number
@@ -471,17 +470,9 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         tensor = Tensor(tensor) if type(tensor) != Tensor else tensor
 
         hashable_axes_lengths = tuple(axes_lengths.items())
-        shape = tensor.shape
-        recipe = _prepare_transformation_recipe(pattern, reduction, axes_names=tuple(axes_lengths), ndim=len(shape))
+        recipe = _prepare_transformation_recipe(pattern, reduction, axes_names=tuple(axes_lengths), ndim=len(tensor.shape))
 
 
-
-
-
-
-
-
-        
 
 
 
@@ -501,6 +492,15 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         except TypeError:
             # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
             _result = _reconstruct_from_shape_uncached(recipe, tensor.shape, axes_lengths)
+        
+
+
+
+
+
+
+
+
             (init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added) = _result
         if init_shapes is not None:
             tensor = tensor.reshape(init_shapes)
@@ -520,7 +520,7 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
     except ValueError as e:
         message = ' Error while processing {}-reduction pattern "{}".'.format(reduction, pattern)
         if not isinstance(tensor, list):
-            message += "\n Input tensor shape: {}. ".format(shape)
+            message += "\n Input tensor shape: {}. ".format(tensor.shape)
         else:
             message += "\n Input is list. "
         message += "Additional info: {}.".format(axes_lengths)
