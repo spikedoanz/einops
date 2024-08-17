@@ -9,13 +9,9 @@ import typing
 from collections import OrderedDict
 from typing import Set, Tuple, List, Dict, Union, Callable, Optional, TypeVar, cast, Any
 
+from tinygrad import Tensor as TGTensor
 
 _ellipsis: str = "…"  # NB, this is a single unicode symbol. String is used as it is not a list, but can be iterated
-
-
-
-__author__ = "Alex Rogozhnikov"
-
 _loaded_backends: dict = {}
 _type2backend: dict = {}
 _debug_importing = False
@@ -165,18 +161,6 @@ class ParsedExpression:
         """
         is_valid, _reason = ParsedExpression.check_axis_name_return_reason(name)
         return is_valid
-
-"""
-Backends in `einops` are organized to meet the following requirements
-- backends are not imported unless those are actually needed, because
-    - backends may not be installed
-    - importing all available backends will drive to significant memory footprint
-    - backends may be present but installed with errors (but never used),
-      importing may drive to crashes
-- backend should be either symbolic or imperative
-    - this determines which methods (from_numpy/to_numpy or create_symbol/eval_symbol) should be defined
-- if backend can't provide symbols for shape dimensions, UnknownSize objects are used
-"""
 
 def get_backend(tensor) -> "AbstractBackend":
     """
@@ -369,273 +353,6 @@ class HashableTuple:
 
     # default equality and hash is used (True only with itself, hash taken of id)
 
-
-class TensorflowBackend(AbstractBackend):
-    framework_name = "tensorflow"
-
-    def __init__(self):
-        import tensorflow
-
-        self.tf = tensorflow
-
-    def is_appropriate_type(self, tensor):
-        return isinstance(tensor, (self.tf.Tensor, self.tf.Variable))
-
-    def from_numpy(self, x):
-        assert self.tf.executing_eagerly()
-        return self.tf.convert_to_tensor(x)
-
-    def to_numpy(self, x):
-        assert self.tf.executing_eagerly()
-        return x.numpy()
-
-    def arange(self, start, stop):
-        return self.tf.range(start, stop)
-
-    def shape(self, x):
-        if self.tf.executing_eagerly():
-            return tuple(UnknownSize() if d is None else int(d) for d in x.shape)
-        else:
-            static_shape = x.shape.as_list()
-            tf_shape = self.tf.shape(x)
-            # use the static shape where known, otherwise use the TF shape components
-            shape = tuple([s or tf_shape[dim] for dim, s in enumerate(static_shape)])
-            try:
-                hash(shape)
-                return shape
-            except BaseException:
-                # unhashable symbols in shape. Wrap tuple to be hashable.
-                return HashableTuple(shape)
-
-    def reduce(self, x, operation, axes):
-        return getattr(self.tf, "reduce_" + operation)(x, axis=axes)
-
-    def reshape(self, x, shape):
-        return self.tf.reshape(x, shape)
-
-    def transpose(self, x, axes):
-        return self.tf.transpose(x, axes)
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        return self.tf.stack(tensors)
-
-    def tile(self, x, repeats):
-        return self.tf.tile(x, repeats)
-
-    def concat(self, tensors, axis: int):
-        return self.tf.concat(tensors, axis=axis)
-
-    def add_axis(self, x, new_position):
-        return self.tf.expand_dims(x, new_position)
-
-    def is_float_type(self, x):
-        return x.dtype in ("float16", "float32", "float64", "float128", "bfloat16")
-
-    def layers(self):
-        from .layers import tensorflow
-
-        return tensorflow
-
-    def einsum(self, pattern, *x):
-        return self.tf.einsum(pattern, *x)
-
-
-class TFKerasBackend(AbstractBackend):
-    framework_name = "tensorflow.keras"
-
-    def __init__(self):
-        import tensorflow as tf
-
-        self.tf = tf
-        self.keras = tf.keras
-        self.K = tf.keras.backend
-
-    def is_appropriate_type(self, tensor):
-        return self.tf.is_tensor(tensor) and self.K.is_keras_tensor(tensor)
-
-    def create_symbol(self, shape):
-        return self.keras.Input(batch_shape=shape)
-
-    def eval_symbol(self, symbol, input_dict):
-        model = self.keras.models.Model([var for (var, _) in input_dict], symbol)
-        return model.predict_on_batch([val for (_, val) in input_dict])
-
-    def arange(self, start, stop):
-        return self.K.arange(start, stop)
-
-    def shape(self, x):
-        shape = self.K.shape(x)  # tf tensor
-        return HashableTuple(tuple(shape))
-
-    def reduce(self, x, operation, axes):
-        return getattr(self.K, operation)(x, axis=axes)
-
-    def reshape(self, x, shape):
-        return self.K.reshape(x, shape)
-
-    def transpose(self, x, axes):
-        return self.K.permute_dimensions(x, axes)
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        return self.K.stack(tensors)
-
-    def tile(self, x, repeats):
-        return self.K.tile(x, repeats)
-
-    def concat(self, tensors, axis: int):
-        return self.K.concatenate(tensors, axis=axis)
-
-    def add_axis(self, x, new_position):
-        return self.K.expand_dims(x, new_position)
-
-    def is_float_type(self, x):
-        return "float" in self.K.dtype(x)
-
-    def layers(self):
-        from .layers import keras
-
-        return keras
-
-
-class OneFlowBackend(AbstractBackend):
-    framework_name = "oneflow"
-
-    def __init__(self):
-        import oneflow as flow
-
-        self.flow = flow
-
-    def is_appropriate_type(self, tensor):
-        return isinstance(tensor, self.flow.Tensor)
-
-    def from_numpy(self, x):
-        variable = self.flow.from_numpy(x)
-        if self.is_float_type(variable):
-            # attach grad only to floating types
-            variable.requires_grad = True
-        return variable
-
-    def to_numpy(self, x):
-        return x.detach().cpu().numpy()
-
-    def arange(self, start, stop):
-        return self.flow.arange(start, stop, dtype=self.flow.int64)
-
-    def reduce(self, x, operation, reduced_axes):
-        for axis in sorted(reduced_axes, reverse=True):
-            if operation == "min":
-                x, _ = x.min(dim=axis)
-            elif operation == "max":
-                x, _ = x.max(dim=axis)
-            elif operation in ["sum", "mean", "prod", "any", "all"]:
-                x = getattr(x, operation)(dim=axis)
-            else:
-                raise NotImplementedError("Unknown reduction ", operation)
-        return x
-
-    def transpose(self, x, axes):
-        return x.permute(axes)
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        return self.flow.stack(tensors)
-
-    def add_axes(self, x, n_axes, pos2len):
-        repeats = [-1] * n_axes
-        for axis_position, axis_length in pos2len.items():
-            x = self.add_axis(x, axis_position)
-            repeats[axis_position] = axis_length
-        return x.expand(*repeats)
-
-    def tile(self, x, repeats):
-        return x.repeat(repeats)
-
-    def concat(self, tensors, axis: int):
-        return self.flow.concat(tensors, dim=axis)
-
-    def add_axis(self, x, new_position):
-        return self.flow.unsqueeze(x, new_position)
-
-    def is_float_type(self, x):
-        return x.dtype in [self.flow.float16, self.flow.float32, self.flow.float64]
-
-    def layers(self):
-        from .layers import oneflow
-
-        return oneflow
-
-    def einsum(self, pattern, *x):
-        return self.flow.einsum(pattern, *x)
-
-
-class PaddleBackend(AbstractBackend):
-    framework_name = "paddle"
-
-    def __init__(self):
-        import paddle
-
-        self.paddle = paddle
-
-    def is_appropriate_type(self, tensor):
-        return isinstance(tensor, (self.paddle.Tensor, self.paddle.static.Variable))
-
-    def from_numpy(self, x):
-        tensor = self.paddle.to_tensor(x)
-        tensor.stop_gradient = False
-        return tensor
-
-    def to_numpy(self, x):
-        return x.detach().numpy()
-
-    def arange(self, start, stop):
-        return self.paddle.arange(start, stop, dtype=self.paddle.int64)
-
-    def reduce(self, x, operation, axes):
-        if len(axes) == x.ndim:
-            # currently paddle returns 1d tensor instead of 0d
-            return super().reduce(x, operation, axes).squeeze(0)
-        else:
-            return super().reduce(x, operation, axes)
-
-    def transpose(self, x, axes):
-        return x.transpose(axes)
-
-    def add_axes(self, x, n_axes, pos2len):
-        repeats = [-1] * n_axes
-        for axis_position, axis_length in pos2len.items():
-            x = self.add_axis(x, axis_position)
-            repeats[axis_position] = axis_length
-        return x.expand(repeats)
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        return self.paddle.stack(tensors)
-
-    def reshape(self, x, shape):
-        return x.reshape(shape)
-
-    def tile(self, x, repeats):
-        return x.tile(repeats)
-
-    def concat(self, tensors, axis: int):
-        return self.paddle.concat(tensors, axis=axis)
-
-    def add_axis(self, x, new_position):
-        return x.unsqueeze(new_position)
-
-    def is_float_type(self, x):
-        return x.dtype in [self.paddle.float16, self.paddle.float32, self.paddle.float64]
-
-    def layers(self):
-        from .layers import paddle
-
-        return paddle
-
-    def einsum(self, pattern, *x):
-        return self.paddle.einsum(pattern, *x)
-
-    def shape(self, x):
-        return tuple(x.shape)
-
-
 class TinygradBackend(AbstractBackend):
     framework_name = "tinygrad"
 
@@ -725,61 +442,6 @@ def _reduce_axes(tensor, reduction_type: Reduction, reduced_axes: List[int], bac
             if not backend.is_float_type(tensor):
                 raise NotImplementedError("reduce_mean is not available for non-floating tensors")
         return backend.reduce(tensor, reduction_type, tuple(reduced_axes))
-
-
-def _optimize_transformation(init_shapes, reduced_axes, axes_reordering, final_shapes):
-    # 'collapses' neighboring axes if those participate in the result pattern in the same order
-    # TODO add support for added_axes
-    assert len(axes_reordering) + len(reduced_axes) == len(init_shapes)
-    # joining consecutive axes that will be reduced
-    # possibly we can skip this if all backends can optimize this (not sure)
-    reduced_axes = tuple(sorted(reduced_axes))
-    for i in range(len(reduced_axes) - 1)[::-1]:
-        if reduced_axes[i] + 1 == reduced_axes[i + 1]:
-            removed_axis = reduced_axes[i + 1]
-            removed_length = init_shapes[removed_axis]
-            init_shapes = init_shapes[:removed_axis] + init_shapes[removed_axis + 1 :]
-            init_shapes[removed_axis - 1] *= removed_length
-            reduced_axes = reduced_axes[: i + 1] + tuple(axis - 1 for axis in reduced_axes[i + 2 :])
-
-    # removing axes that are moved together during reshape
-    def build_mapping():
-        init_to_final = {}
-        for axis in range(len(init_shapes)):
-            if axis in reduced_axes:
-                init_to_final[axis] = None
-            else:
-                after_reduction = sum(x is not None for x in init_to_final.values())
-                init_to_final[axis] = list(axes_reordering).index(after_reduction)
-        return init_to_final
-
-    init_axis_to_final_axis = build_mapping()
-
-    for init_axis in range(len(init_shapes) - 1)[::-1]:
-        if init_axis_to_final_axis[init_axis] is None:
-            continue
-        if init_axis_to_final_axis[init_axis + 1] is None:
-            continue
-        if init_axis_to_final_axis[init_axis] + 1 == init_axis_to_final_axis[init_axis + 1]:
-            removed_axis = init_axis + 1
-            removed_length = init_shapes[removed_axis]
-            removed_axis_after_reduction = sum(x not in reduced_axes for x in range(removed_axis))
-
-            reduced_axes = tuple(axis if axis < removed_axis else axis - 1 for axis in reduced_axes)
-            init_shapes = init_shapes[:removed_axis] + init_shapes[removed_axis + 1 :]
-            init_shapes[removed_axis - 1] *= removed_length
-            old_reordering = axes_reordering
-            axes_reordering = []
-            for axis in old_reordering:
-                if axis == removed_axis_after_reduction:
-                    pass
-                elif axis < removed_axis_after_reduction:
-                    axes_reordering.append(axis)
-                else:
-                    axes_reordering.append(axis - 1)
-            init_axis_to_final_axis = build_mapping()
-
-    return init_shapes, reduced_axes, axes_reordering, final_shapes
 
 
 CookedRecipe = Tuple[Optional[List[int]], Optional[List[int]], List[int], Dict[int, int], Optional[List[int]], int]
@@ -906,66 +568,6 @@ def _reconstruct_from_shape_uncached(
 
 _reconstruct_from_shape = functools.lru_cache(1024)(_reconstruct_from_shape_uncached)
 
-
-def _apply_recipe(
-    backend, recipe: TransformRecipe, tensor: Tensor, reduction_type: Reduction, axes_lengths: HashableAxesLengths
-) -> Tensor:
-    # this method implements actual work for all backends for 3 operations
-    try:
-        init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added = _reconstruct_from_shape(
-            recipe, backend.shape(tensor), axes_lengths
-        )
-    except TypeError:
-        # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
-        _result = _reconstruct_from_shape_uncached(recipe, backend.shape(tensor), axes_lengths)
-        (init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added) = _result
-    if init_shapes is not None:
-        tensor = backend.reshape(tensor, init_shapes)
-    if axes_reordering is not None:
-        tensor = backend.transpose(tensor, axes_reordering)
-    if len(reduced_axes) > 0:
-        tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes, backend=backend)
-    if len(added_axes) > 0:
-        tensor = backend.add_axes(tensor, n_axes=n_axes_w_added, pos2len=added_axes)
-    if final_shapes is not None:
-        tensor = backend.reshape(tensor, final_shapes)
-    return tensor
-
-
-def _apply_recipe_array_api(
-    xp, recipe: TransformRecipe, tensor: Tensor, reduction_type: Reduction, axes_lengths: HashableAxesLengths
-) -> Tensor:
-    # completely-inline implementation
-    init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added = _reconstruct_from_shape(
-        recipe, tensor.shape, axes_lengths
-    )
-    if init_shapes is not None:
-        tensor = xp.reshape(tensor, init_shapes)
-    if axes_reordering is not None:
-        tensor = xp.permute_dims(tensor, axes_reordering)
-    if len(reduced_axes) > 0:
-        if callable(reduction_type):
-            # custom callable
-            tensor = reduction_type(tensor, tuple(reduced_axes))
-        else:
-            # one of built-in operations
-            assert reduction_type in _reductions
-            tensor = getattr(xp, reduction_type)(tensor, axis=tuple(reduced_axes))
-    if len(added_axes) > 0:
-        # we use broadcasting
-        for axis_position, axis_length in added_axes.items():
-            tensor = xp.expand_dims(tensor, axis=axis_position)
-
-        final_shape = list(tensor.shape)
-        for axis_position, axis_length in added_axes.items():
-            final_shape[axis_position] = axis_length
-
-        tensor = xp.broadcast_to(tensor, final_shape)
-    if final_shapes is not None:
-        tensor = xp.reshape(tensor, final_shapes)
-    return tensor
-
-
 @functools.lru_cache(256)
 def _prepare_transformation_recipe(
     pattern: str,
@@ -991,16 +593,6 @@ def _prepare_transformation_recipe(
         difference = set.symmetric_difference(left.identifiers, rght.identifiers)
         if len(difference) > 0:
             raise ValueError("Identifiers only on one side of expression (should be on both): {}".format(difference))
-    elif operation == "repeat":
-        difference = set.difference(left.identifiers, rght.identifiers)
-        if len(difference) > 0:
-            raise ValueError("Unexpected identifiers on the left side of repeat: {}".format(difference))
-        axes_without_size = set.difference(
-            {ax for ax in rght.identifiers if not isinstance(ax, AnonymousAxis)},
-            {*left.identifiers, *axes_names},
-        )
-        if len(axes_without_size) > 0:
-            raise ValueError("Specify sizes for new axes in repeat: {}".format(axes_without_size))
     elif operation in _reductions or callable(operation):
         difference = set.difference(rght.identifiers, left.identifiers)
         if len(difference) > 0:
@@ -1122,88 +714,58 @@ def _prepare_transformation_recipe(
     )
 
 
-def _prepare_recipes_for_all_dims(
-    pattern: str, operation: Reduction, axes_names: Tuple[str, ...]
-) -> Dict[int, TransformRecipe]:
-    """
-    Internal function, used in layers.
-    Layer makes all recipe creation when it is initialized, thus to keep recipes simple we pre-compute for all dims
-    """
-    left_str, rght_str = pattern.split("->")
-    left = ParsedExpression(left_str)
-    dims = [len(left.composition)]
-    if left.has_ellipsis:
-        dims = [len(left.composition) - 1 + ellipsis_dims for ellipsis_dims in range(8)]
-    return {ndim: _prepare_transformation_recipe(pattern, operation, axes_names, ndim=ndim) for ndim in dims}
-
-
 def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reduction, **axes_lengths: int) -> Tensor:
-    """
-    einops.reduce provides combination of reordering and reduction using reader-friendly notation.
-
-    Examples for reduce operation:
-
-    ```python
-    >>> x = np.random.randn(100, 32, 64)
-
-    # perform max-reduction on the first axis
-    >>> y = reduce(x, 't b c -> b c', 'max')
-
-    # same as previous, but with clearer axes meaning
-    >>> y = reduce(x, 'time batch channel -> batch channel', 'max')
-
-    >>> x = np.random.randn(10, 20, 30, 40)
-
-    # 2d max-pooling with kernel size = 2 * 2 for image processing
-    >>> y1 = reduce(x, 'b c (h1 h2) (w1 w2) -> b c h1 w1', 'max', h2=2, w2=2)
-
-    # if one wants to go back to the original height and width, depth-to-space trick can be applied
-    >>> y2 = rearrange(y1, 'b (c h2 w2) h1 w1 -> b c (h1 h2) (w1 w2)', h2=2, w2=2)
-    >>> assert parse_shape(x, 'b _ h w') == parse_shape(y2, 'b _ h w')
-
-    # Adaptive 2d max-pooling to 3 * 4 grid
-    >>> reduce(x, 'b c (h1 h2) (w1 w2) -> b c h1 w1', 'max', h1=3, w1=4).shape
-    (10, 20, 3, 4)
-
-    # Global average pooling
-    >>> reduce(x, 'b c h w -> b c', 'mean').shape
-    (10, 20)
-
-    # Subtracting mean over batch for each channel
-    >>> y = x - reduce(x, 'b c h w -> () c () ()', 'mean')
-
-    # Subtracting per-image mean for each channel
-    >>> y = x - reduce(x, 'b c h w -> b c () ()', 'mean')
-
-    ```
-
-    Parameters:
-        tensor: tensor: tensor of any supported library (e.g. numpy.ndarray, tensorflow, pytorch).
-            list of tensors is also accepted, those should be of the same type and shape
-        pattern: string, reduction pattern
-        reduction: one of available reductions ('min', 'max', 'sum', 'mean', 'prod'), case-sensitive
-            alternatively, a callable f(tensor, reduced_axes) -> tensor can be provided.
-            This allows using various reductions, examples: np.max, tf.reduce_logsumexp, torch.var, etc.
-        axes_lengths: any additional specifications for dimensions
-
-    Returns:
-        tensor of the same type as input
-    """
     try:
         if isinstance(tensor, list):
             if len(tensor) == 0:
                 raise TypeError("Rearrange/Reduce/Repeat can't be applied to an empty list")
             backend = get_backend(tensor[0])
-            tensor = backend.stack_on_zeroth_dimension(tensor)
+            tensor = TGTensor.stack(tensors)
         else:
             backend = get_backend(tensor)
 
         hashable_axes_lengths = tuple(axes_lengths.items())
-        shape = backend.shape(tensor)
+        shape = tensor.shape
         recipe = _prepare_transformation_recipe(pattern, reduction, axes_names=tuple(axes_lengths), ndim=len(shape))
-        return _apply_recipe(
-            backend, recipe, cast(Tensor, tensor), reduction_type=reduction, axes_lengths=hashable_axes_lengths
-        )
+
+
+
+        axes_lengths=hashable_axes_lengths
+        reduction_type=reduction
+        try:
+            init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added = _reconstruct_from_shape(
+                recipe, tensor.shape, axes_lengths
+            )
+
+
+
+
+
+
+
+
+
+
+
+        except TypeError:
+            # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
+            _result = _reconstruct_from_shape_uncached(recipe, tensor.shape, axes_lengths)
+            (init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added) = _result
+        if init_shapes is not None:
+            tensor = tensor.reshape(init_shapes)
+        if axes_reordering is not None:
+            tensor = backend.transpose(tensor, axes_reordering)
+        if len(reduced_axes) > 0:
+            tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes, backend=backend)
+        if len(added_axes) > 0:
+            tensor = backend.add_axes(tensor, n_axes=n_axes_w_added, pos2len=added_axes)
+        if final_shapes is not None:
+            tensor = tensor.reshape(final_shapes)
+        return tensor
+
+
+
+
     except ValueError as e:
         message = ' Error while processing {}-reduction pattern "{}".'.format(reduction, pattern)
         if not isinstance(tensor, list):
@@ -1215,110 +777,4 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
 
 
 def rearrange(tensor: Union[Tensor, List[Tensor]], pattern: str, **axes_lengths) -> Tensor:
-    """
-    einops.rearrange is a reader-friendly smart element reordering for multidimensional tensors.
-    This operation includes functionality of transpose (axes permutation), reshape (view), squeeze, unsqueeze,
-    stack, concatenate and other operations.
-
-    Examples for rearrange operation:
-
-    ```python
-    # suppose we have a set of 32 images in "h w c" format (height-width-channel)
-    >>> images = [np.random.randn(30, 40, 3) for _ in range(32)]
-
-    # stack along first (batch) axis, output is a single array
-    >>> rearrange(images, 'b h w c -> b h w c').shape
-    (32, 30, 40, 3)
-
-    # concatenate images along height (vertical axis), 960 = 32 * 30
-    >>> rearrange(images, 'b h w c -> (b h) w c').shape
-    (960, 40, 3)
-
-    # concatenated images along horizontal axis, 1280 = 32 * 40
-    >>> rearrange(images, 'b h w c -> h (b w) c').shape
-    (30, 1280, 3)
-
-    # reordered axes to "b c h w" format for deep learning
-    >>> rearrange(images, 'b h w c -> b c h w').shape
-    (32, 3, 30, 40)
-
-    # flattened each image into a vector, 3600 = 30 * 40 * 3
-    >>> rearrange(images, 'b h w c -> b (c h w)').shape
-    (32, 3600)
-
-    # split each image into 4 smaller (top-left, top-right, bottom-left, bottom-right), 128 = 32 * 2 * 2
-    >>> rearrange(images, 'b (h1 h) (w1 w) c -> (b h1 w1) h w c', h1=2, w1=2).shape
-    (128, 15, 20, 3)
-
-    # space-to-depth operation
-    >>> rearrange(images, 'b (h h1) (w w1) c -> b h w (c h1 w1)', h1=2, w1=2).shape
-    (32, 15, 20, 12)
-
-    ```
-
-    When composing axes, C-order enumeration used (consecutive elements have different last axis)
-    Find more examples in einops tutorial.
-
-    Parameters:
-        tensor: tensor of any supported library (e.g. numpy.ndarray, tensorflow, pytorch).
-                list of tensors is also accepted, those should be of the same type and shape
-        pattern: string, rearrangement pattern
-        axes_lengths: any additional specifications for dimensions
-
-    Returns:
-        tensor of the same type as input. If possible, a view to the original tensor is returned.
-
-    """
     return reduce(tensor, pattern, reduction="rearrange", **axes_lengths)
-
-
-def repeat(tensor: Union[Tensor, List[Tensor]], pattern: str, **axes_lengths) -> Tensor:
-    """
-    einops.repeat allows reordering elements and repeating them in arbitrary combinations.
-    This operation includes functionality of repeat, tile, broadcast functions.
-
-    Examples for repeat operation:
-
-    ```python
-    # a grayscale image (of shape height x width)
-    >>> image = np.random.randn(30, 40)
-
-    # change it to RGB format by repeating in each channel
-    >>> repeat(image, 'h w -> h w c', c=3).shape
-    (30, 40, 3)
-
-    # repeat image 2 times along height (vertical axis)
-    >>> repeat(image, 'h w -> (repeat h) w', repeat=2).shape
-    (60, 40)
-
-    # repeat image 2 time along height and 3 times along width
-    >>> repeat(image, 'h w -> (h2 h) (w3 w)', h2=2, w3=3).shape
-    (60, 120)
-
-    # convert each pixel to a small square 2x2. Upsample image by 2x
-    >>> repeat(image, 'h w -> (h h2) (w w2)', h2=2, w2=2).shape
-    (60, 80)
-
-    # pixelate image first by downsampling by 2x, then upsampling
-    >>> downsampled = reduce(image, '(h h2) (w w2) -> h w', 'mean', h2=2, w2=2)
-    >>> repeat(downsampled, 'h w -> (h h2) (w w2)', h2=2, w2=2).shape
-    (30, 40)
-
-    ```
-
-    When composing axes, C-order enumeration used (consecutive elements have different last axis)
-    Find more examples in einops tutorial.
-
-    Parameters:
-        tensor: tensor of any supported library (e.g. numpy.ndarray, tensorflow, pytorch).
-            list of tensors is also accepted, those should be of the same type and shape
-        pattern: string, rearrangement pattern
-        axes_lengths: any additional specifications for dimensions
-
-    Returns:
-        Tensor of the same type as input. If possible, a view to the original tensor is returned.
-
-    """
-    return reduce(tensor, pattern, reduction="repeat", **axes_lengths)
-
-
