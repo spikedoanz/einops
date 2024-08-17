@@ -181,7 +181,7 @@ def _product(sequence: List[int]) -> int:
     return result
 
 
-def _reduce_axes(tensor, reduction_type: Reduction, reduced_axes: List[int], backend):
+def _reduce_axes(tensor, reduction_type: Reduction, reduced_axes: List[int]):
     if callable(reduction_type):
         # custom callable
         return reduction_type(tensor, tuple(reduced_axes))
@@ -469,10 +469,9 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         if isinstance(tensor, list):
             if len(tensor) == 0:
                 raise TypeError("Rearrange/Reduce/Repeat can't be applied to an empty list")
-            backend = get_backend(tensor[0])
             tensor = Tensor.stack(tensors)
         else:
-            tensor = Tensor(tensor)
+            tensor = Tensor(tensor) if type(tensor) != Tensor else tensor
 
         hashable_axes_lengths = tuple(axes_lengths.items())
         shape = tensor.shape
@@ -502,7 +501,7 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         if axes_reordering is not None:
             tensor = tensor.permute(axes_reordering)
         if len(reduced_axes) > 0:
-            tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes, backend=backend)
+            tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes)
         if len(added_axes) > 0:
             tensor = backend.add_axes(tensor, n_axes=n_axes_w_added, pos2len=added_axes)
         if final_shapes is not None:

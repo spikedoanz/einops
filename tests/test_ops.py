@@ -4,8 +4,10 @@ import numpy
 import numpy as np
 import pytest
 
-from .rewrite import rearrange#, reduce, repeat, _enumerate_directions
+from .rewrite import rearrange, reduce#, repeat, _enumerate_directions
 from . import collect_test_backends, is_backend_tested, FLOAT_REDUCTIONS as REDUCTIONS
+
+from tinygrad import Tensor
 
 imp_op_backends = collect_test_backends(symbolic=False, layers=False)
 sym_op_backends = collect_test_backends(symbolic=True, layers=False)
@@ -75,6 +77,23 @@ def test_collapsed_ellipsis_errors_out():
 #     all_rearrange_patterns = [*identity_patterns]
 #     for pattern_pairs in equivalent_rearrange_patterns:
 #         all_rearrange_patterns.extend(pattern_pairs)
+
+def test_ellipsis_ops_tinygrad():
+    x = Tensor(numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6]))
+    for pattern in identity_patterns:
+        assert numpy.array_equal(x.numpy(), rearrange(x, pattern).numpy()), pattern
+
+    for pattern1, pattern2 in equivalent_rearrange_patterns:
+        assert numpy.array_equal(rearrange(x, pattern1).numpy(), rearrange(x, pattern2).numpy())
+
+    # for reduction in ["min", "max", "sum"]:
+    #     for pattern1, pattern2 in equivalent_reduction_patterns:
+    #         assert numpy.array_equal(reduce(x.numpy(), pattern1, reduction=reduction), reduce(x, pattern2, reduction=reduction).numpy())
+    #
+    # now just check coincidence with numpy
+    all_rearrange_patterns = [*identity_patterns]
+    for pattern_pairs in equivalent_rearrange_patterns:
+        all_rearrange_patterns.extend(pattern_pairs)
 
 def check_op_against_numpy(backend, numpy_input, pattern, axes_lengths, reduction="rearrange", is_symbolic=False):
     """
