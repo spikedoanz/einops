@@ -38,7 +38,7 @@ class ParsedExpression:
     and keeps some information important for downstream
     """
 
-    def __init__(self, expression: str):
+    def __init__(self, expression: str, *, allow_underscore: bool = False, allow_duplicates: bool = False):
         self.has_ellipsis: bool = False
         self.has_ellipsis_parenthesized: Optional[bool] = None
         self.identifiers: Set[str] = set()
