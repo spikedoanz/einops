@@ -9,7 +9,7 @@ import typing
 from collections import OrderedDict
 from typing import Set, Tuple, List, Dict, Union, Callable, Optional, TypeVar, cast, Any
 
-from tinygrad import Tensor as TGTensor
+from tinygrad import Tensor
 
 _ellipsis: str = "…"  # NB, this is a single unicode symbol. String is used as it is not a list, but can be iterated
 _loaded_backends: dict = {}
@@ -162,212 +162,6 @@ class ParsedExpression:
         is_valid, _reason = ParsedExpression.check_axis_name_return_reason(name)
         return is_valid
 
-def get_backend(tensor) -> "AbstractBackend":
-    """
-    Takes a correct backend (e.g. numpy backend if tensor is numpy.ndarray) for a tensor.
-    If needed, imports package and creates backend
-    """
-    _type = type(tensor)
-    _result = _type2backend.get(_type, None)
-    if _result is not None:
-        return _result
-
-    for framework_name, backend in list(_loaded_backends.items()):
-        if backend.is_appropriate_type(tensor):
-            _type2backend[_type] = backend
-            return backend
-
-    # Find backend subclasses recursively
-    backend_subclasses = []
-    backends = AbstractBackend.__subclasses__()
-    while backends:
-        backend = backends.pop()
-        backends += backend.__subclasses__()
-        backend_subclasses.append(backend)
-
-    for BackendSubclass in backend_subclasses:
-        if _debug_importing:
-            print("Testing for subclass of ", BackendSubclass)
-        if BackendSubclass.framework_name not in _loaded_backends:
-            # check that module was already imported. Otherwise it can't be imported
-            if BackendSubclass.framework_name in sys.modules:
-                if _debug_importing:
-                    print("Imported backend for ", BackendSubclass.framework_name)
-                backend = BackendSubclass()
-                _loaded_backends[backend.framework_name] = backend
-                if backend.is_appropriate_type(tensor):
-                    _type2backend[_type] = backend
-                    return backend
-
-    raise RuntimeError("Tensor type unknown to einops {}".format(type(tensor)))
-
-
-class AbstractBackend:
-    """Base backend class, major part of methods are only for debugging purposes."""
-
-    framework_name: str
-
-    def is_appropriate_type(self, tensor):
-        """helper method should recognize tensors it can handle"""
-        raise NotImplementedError()
-
-    def from_numpy(self, x):
-        raise NotImplementedError("framework doesn't support imperative execution")
-
-    def to_numpy(self, x):
-        raise NotImplementedError("framework doesn't support imperative execution")
-
-    def create_symbol(self, shape):
-        raise NotImplementedError("framework doesn't support symbolic computations")
-
-    def eval_symbol(self, symbol, input_dict):
-        raise NotImplementedError("framework doesn't support symbolic computations")
-
-    def arange(self, start, stop):
-        # supplementary method used only in testing, so should implement CPU version
-        raise NotImplementedError("framework doesn't implement arange")
-
-    def shape(self, x):
-        """shape should return a tuple with integers or "shape symbols" (which will evaluate to actual size)"""
-        return x.shape
-
-    def reshape(self, x, shape):
-        return x.reshape(shape)
-
-    def transpose(self, x, axes):
-        return x.transpose(axes)
-
-    def reduce(self, x, operation, axes):
-        return getattr(x, operation)(axis=axes)
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        raise NotImplementedError()
-
-    def add_axis(self, x, new_position):
-        raise NotImplementedError()
-
-    def add_axes(self, x, n_axes, pos2len):
-        repeats = [1] * n_axes
-        for axis_position, axis_length in pos2len.items():
-            x = self.add_axis(x, axis_position)
-            repeats[axis_position] = axis_length
-        return self.tile(x, tuple(repeats))
-
-    def tile(self, x, repeats):
-        """repeats - same lengths as x.shape"""
-        raise NotImplementedError()
-
-    def concat(self, tensors, axis: int):
-        """concatenates tensors along axis.
-        Assume identical across tensors: devices, dtypes and shapes except selected axis."""
-        raise NotImplementedError()
-
-    def is_float_type(self, x):
-        # some backends (torch) can't compute average for non-floating types.
-        # Decided to drop average for all backends if type is not floating
-        raise NotImplementedError()
-
-    def layers(self):
-        raise NotImplementedError("backend does not provide layers")
-
-    def __repr__(self):
-        return "<einops backend for {}>".format(self.framework_name)
-
-    def einsum(self, pattern, *x):
-        raise NotImplementedError("backend does not support einsum")
-
-
-class NumpyBackend(AbstractBackend):
-    framework_name = "numpy"
-
-    def __init__(self):
-        import numpy
-
-        self.np = numpy
-
-    def is_appropriate_type(self, tensor):
-        return isinstance(tensor, self.np.ndarray)
-
-    def from_numpy(self, x):
-        return x
-
-    def to_numpy(self, x):
-        return x
-
-    def arange(self, start, stop):
-        return self.np.arange(start, stop)
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        return self.np.stack(tensors)
-
-    def tile(self, x, repeats):
-        return self.np.tile(x, repeats)
-
-    def concat(self, tensors, axis: int):
-        return self.np.concatenate(tensors, axis=axis)
-
-    def is_float_type(self, x):
-        return x.dtype in ("float16", "float32", "float64", "float128", "bfloat16")
-
-    def add_axis(self, x, new_position):
-        return self.np.expand_dims(x, new_position)
-
-    def einsum(self, pattern, *x):
-        return self.np.einsum(pattern, *x)
-
-class TinygradBackend(AbstractBackend):
-    framework_name = "tinygrad"
-
-    def __init__(self):
-        import tinygrad
-
-        self.tinygrad = tinygrad
-
-    def is_appropriate_type(self, tensor):
-        return isinstance(tensor, self.tinygrad.Tensor)
-
-    def from_numpy(self, x):
-        return self.tinygrad.Tensor(x)
-
-    def to_numpy(self, x):
-        return x.numpy()
-
-    def arange(self, start, stop):
-        return self.tinygrad.Tensor.arange(start, stop)
-
-    def shape(self, x):
-        return x.shape
-
-    def reshape(self, x, shape):
-        return x.reshape(shape)
-
-    def transpose(self, x, axes):
-        return x.permute(axes)
-
-    def reduce(self, x, operation, axes):
-        for axis in sorted(axes, reverse=True):
-            x = getattr(x, operation)(axis=axis)
-        return x
-
-    def stack_on_zeroth_dimension(self, tensors: list):
-        return self.tinygrad.Tensor.stack(tensors)
-
-    def add_axis(self, x, new_position):
-        return x.unsqueeze(new_position)
-
-    def tile(self, x, repeats):
-        return x.repeat(repeats)
-
-    def concat(self, tensors, axis: int):
-        return tensors[0].cat(tensors[1:], axis) if len(tensors) > 1 else tensors[0]
-
-    def is_float_type(self, x):
-        return self.tinygrad.dtypes.is_float(x.dtype)
-
-    def einsum(self, pattern, *x):
-        return self.tinygrad.Tensor.einsum(pattern, *x)
-
-Tensor = TypeVar("Tensor")
 ReductionCallable = Callable[[Tensor, Tuple[int, ...]], Tensor]
 Reduction = Union[str, ReductionCallable]
 
@@ -676,9 +470,9 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
             if len(tensor) == 0:
                 raise TypeError("Rearrange/Reduce/Repeat can't be applied to an empty list")
             backend = get_backend(tensor[0])
-            tensor = TGTensor.stack(tensors)
+            tensor = Tensor.stack(tensors)
         else:
-            backend = get_backend(tensor)
+            tensor = Tensor(tensor)
 
         hashable_axes_lengths = tuple(axes_lengths.items())
         shape = tensor.shape
@@ -699,10 +493,6 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
 
 
 
-
-
-
-
         except TypeError:
             # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
             _result = _reconstruct_from_shape_uncached(recipe, tensor.shape, axes_lengths)
@@ -710,9 +500,7 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         if init_shapes is not None:
             tensor = tensor.reshape(init_shapes)
         if axes_reordering is not None:
-            if type(tensor) == TGTensor:
-                tensor = tensor.permute(axes_reordering)
-            # tensor = backend.transpose(tensor, axes_reordering)
+            tensor = tensor.permute(axes_reordering)
         if len(reduced_axes) > 0:
             tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes, backend=backend)
         if len(added_axes) > 0:
