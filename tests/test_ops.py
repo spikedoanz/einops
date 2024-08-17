@@ -183,32 +183,32 @@ def test_rearrange_consistency_tinygrad():
     assert x2[0, 1, 2] == result[1, 2, 0]
 
 
-# def test_rearrange_permutations_numpy():
-#     # tests random permutation of axes against two independent numpy ways
-#     for n_axes in range(1, 10):
-#         input = numpy.arange(2**n_axes).reshape([2] * n_axes)
-#         permutation = numpy.random.permutation(n_axes)
-#         left_expression = " ".join("i" + str(axis) for axis in range(n_axes))
-#         right_expression = " ".join("i" + str(axis) for axis in permutation)
-#         expression = left_expression + " -> " + right_expression
-#         result = rearrange(input, expression)
-#
-#         for pick in numpy.random.randint(0, 2, [10, n_axes]):
-#             assert input[tuple(pick)] == result[tuple(pick[permutation])]
-#
-#     for n_axes in range(1, 10):
-#         input = numpy.arange(2**n_axes).reshape([2] * n_axes)
-#         permutation = numpy.random.permutation(n_axes)
-#         left_expression = " ".join("i" + str(axis) for axis in range(n_axes)[::-1])
-#         right_expression = " ".join("i" + str(axis) for axis in permutation[::-1])
-#         expression = left_expression + " -> " + right_expression
-#         result = rearrange(input, expression)
-#         assert result.shape == input.shape
-#         expected_result = numpy.zeros_like(input)
-#         for original_axis, result_axis in enumerate(permutation):
-#             expected_result |= ((input >> original_axis) & 1) << result_axis
-#
-#         assert numpy.array_equal(result, expected_result)
+def test_rearrange_permutations_numpy():
+    # tests random permutation of axes against two independent numpy ways
+    for n_axes in range(1, 10):
+        input = numpy.arange(2**n_axes).reshape([2] * n_axes)
+        permutation = numpy.random.permutation(n_axes)
+        left_expression = " ".join("i" + str(axis) for axis in range(n_axes))
+        right_expression = " ".join("i" + str(axis) for axis in permutation)
+        expression = left_expression + " -> " + right_expression
+        result = rearrange(input, expression)
+
+        for pick in numpy.random.randint(0, 2, [10, n_axes]):
+            assert input[tuple(pick)] == result.numpy()[tuple(pick[permutation])]
+
+    for n_axes in range(1, 10):
+        input = numpy.arange(2**n_axes).reshape([2] * n_axes)
+        permutation = numpy.random.permutation(n_axes)
+        left_expression = " ".join("i" + str(axis) for axis in range(n_axes)[::-1])
+        right_expression = " ".join("i" + str(axis) for axis in permutation[::-1])
+        expression = left_expression + " -> " + right_expression
+        result = rearrange(input, expression)
+        assert result.shape == input.shape
+        expected_result = numpy.zeros_like(input)
+        for original_axis, result_axis in enumerate(permutation):
+            expected_result |= ((input >> original_axis) & 1) << result_axis
+
+        assert array_equal(result, expected_result)
 
 
 # def test_reduction_imperatives():
