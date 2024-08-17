@@ -122,21 +122,21 @@ def check_op_against_numpy(backend, numpy_input, pattern, axes_lengths, reductio
     check_equal(numpy_result, backend_result)
 
 
-# def test_ellipsis_ops_imperative():
-#     """Checking various patterns against numpy"""
-#     x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
-#     for is_symbolic in [True, False]:
-#         for backend in collect_test_backends(symbolic=is_symbolic, layers=False):
-#             for pattern in identity_patterns + list(itertools.chain(*equivalent_rearrange_patterns)):
-#                 check_op_against_numpy(
-#                     backend, x, pattern, axes_lengths={}, reduction="rearrange", is_symbolic=is_symbolic
-#                 )
-#
-#             for reduction in ["min", "max", "sum"]:
-#                 for pattern in itertools.chain(*equivalent_reduction_patterns):
-#                     check_op_against_numpy(
-#                         backend, x, pattern, axes_lengths={}, reduction=reduction, is_symbolic=is_symbolic
-#                     )
+def test_ellipsis_ops_imperative():
+    """Checking various patterns against numpy"""
+    x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
+    for is_symbolic in [True, False]:
+        for backend in collect_test_backends(symbolic=is_symbolic, layers=False):
+            for pattern in identity_patterns + list(itertools.chain(*equivalent_rearrange_patterns)):
+                check_op_against_numpy(
+                    backend, x, pattern, axes_lengths={}, reduction="rearrange", is_symbolic=is_symbolic
+                )
+
+            # for reduction in ["min", "max", "sum"]:
+            #     for pattern in itertools.chain(*equivalent_reduction_patterns):
+            #         check_op_against_numpy(
+            #             backend, x, pattern, axes_lengths={}, reduction=reduction, is_symbolic=is_symbolic
+            #         )
 
 
 # def test_rearrange_array_api():
