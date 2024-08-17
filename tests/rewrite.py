@@ -466,12 +466,9 @@ def _prepare_transformation_recipe(
 
 def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reduction, **axes_lengths: int) -> Tensor:
     try:
-        if isinstance(tensor, list):
-            if len(tensor) == 0:
+        if isinstance(tensor, list) and len(tensor) == 0:
                 raise TypeError("Rearrange/Reduce/Repeat can't be applied to an empty list")
-            tensor = Tensor.stack(tensors)
-        else:
-            tensor = Tensor(tensor) if type(tensor) != Tensor else tensor
+        tensor = Tensor(tensor) if type(tensor) != Tensor else tensor
 
         hashable_axes_lengths = tuple(axes_lengths.items())
         shape = tensor.shape

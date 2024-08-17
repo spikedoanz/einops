@@ -300,37 +300,36 @@ def test_reduction_symbolic():
                     assert numpy.allclose(result, expected_numpy_result)
 
 
-# def test_reduction_stress_imperatives():
-#     for backend in imp_op_backends:
-#         print("Stress-testing reduction for ", backend.framework_name)
-#         for reduction in REDUCTIONS + ("rearrange",):
-#             dtype = "int64"
-#             coincide = numpy.array_equal
-#             if reduction in ["mean", "prod"]:
-#                 dtype = "float64"
-#                 coincide = numpy.allclose
-#             max_dim = 11
-#             if "oneflow" in backend.framework_name:
-#                 max_dim = 7
-#             if "paddle" in backend.framework_name:
-#                 max_dim = 9
-#             for n_axes in range(max_dim):
-#                 shape = numpy.random.randint(2, 4, size=n_axes)
-#                 permutation = numpy.random.permutation(n_axes)
-#                 skipped = 0 if reduction == "rearrange" else numpy.random.randint(n_axes + 1)
-#                 left = " ".join("x" + str(i) for i in range(n_axes))
-#                 right = " ".join("x" + str(i) for i in permutation[skipped:])
-#                 pattern = left + "->" + right
-#                 x = numpy.arange(1, 1 + numpy.prod(shape), dtype=dtype).reshape(shape)
-#                 if reduction == "prod":
-#                     x /= x.mean()  # to avoid overflows
-#                 result1 = reduce(x, pattern, reduction=reduction)
-#                 result2 = x.transpose(permutation)
-#                 if skipped > 0:
-#                     result2 = getattr(result2, reduction)(axis=tuple(range(skipped)))
-#                 assert coincide(result1, result2)
-#                 check_op_against_numpy(backend, x, pattern, reduction=reduction, axes_lengths={}, is_symbolic=False)
-#
+def test_reduction_stress_imperatives():
+    for backend in imp_op_backends:
+        print("Stress-testing reduction for ", backend.framework_name)
+        for reduction in ("rearrange",):
+            dtype = "int64"
+            coincide = numpy.array_equal
+            if reduction in ["mean", "prod"]:
+                dtype = "float64"
+                coincide = numpy.allclose
+            max_dim = 11
+            if "oneflow" in backend.framework_name:
+                max_dim = 7
+            if "paddle" in backend.framework_name:
+                max_dim = 9
+            for n_axes in range(max_dim):
+                shape = numpy.random.randint(2, 4, size=n_axes)
+                permutation = numpy.random.permutation(n_axes)
+                skipped = 0 if reduction == "rearrange" else numpy.random.randint(n_axes + 1)
+                left = " ".join("x" + str(i) for i in range(n_axes))
+                right = " ".join("x" + str(i) for i in permutation[skipped:])
+                pattern = left + "->" + right
+                x = numpy.arange(1, 1 + numpy.prod(shape), dtype=dtype).reshape(shape)
+                if reduction == "prod":
+                    x /= x.mean()  # to avoid overflows
+                result1 = reduce(x, pattern, reduction=reduction)
+                result2 = x.transpose(permutation)
+                if skipped > 0:
+                    result2 = getattr(result2, reduction)(axis=tuple(range(skipped)))
+                assert coincide(result1, result2)
+                check_op_against_numpy(backend, x, pattern, reduction=reduction, axes_lengths={}, is_symbolic=False)
 
 # def test_reduction_with_callable_imperatives():
 #     x_numpy = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6]).astype("float32")
@@ -580,21 +579,21 @@ test_cases_repeat_anonymous = [
 #         check_reversion(x, pattern, **axis_dimensions)
 
 
-# def test_list_inputs():
-#     x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
-#
-#     assert numpy.array_equal(
-#         rearrange(list(x), "... -> (...)"),
-#         rearrange(x, "... -> (...)"),
-#     )
-#     assert numpy.array_equal(
-#         reduce(list(x), "a ... e -> (...)", "min"),
-#         reduce(x, "a ... e -> (...)", "min"),
-#     )
-#     assert numpy.array_equal(
-#         repeat(list(x), "...  -> b (...)", b=3),
-#         repeat(x, "...  -> b (...)", b=3),
-#     )
+def test_list_inputs():
+    x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
+
+    assert array_equal(
+        rearrange(list(x), "... -> (...)"),
+        rearrange(x, "... -> (...)"),
+    )
+    # assert numpy.array_equal(
+    #     reduce(list(x), "a ... e -> (...)", "min"),
+    #     reduce(x, "a ... e -> (...)", "min"),
+    # )
+    # assert numpy.array_equal(
+    #     repeat(list(x), "...  -> b (...)", b=3),
+    #     repeat(x, "...  -> b (...)", b=3),
+    # )
 
 #
 # def test_torch_compile_with_dynamic_shape():
