@@ -277,25 +277,6 @@ class AbstractBackend:
         raise NotImplementedError("backend does not support einsum")
 
 
-class UnknownSize:
-    """pseudo-symbol for symbolic frameworks which do not provide symbols for shape elements"""
-
-    def __floordiv__(self, other):
-        return self
-
-    def __eq__(self, other):
-        return True  # we don't know actual size
-
-    def __mul__(self, other):
-        return self
-
-    def __rmul__(self, other):
-        return self
-
-    def __hash__(self):
-        return hash(None)
-
-
 class NumpyBackend(AbstractBackend):
     framework_name = "numpy"
 
