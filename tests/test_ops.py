@@ -38,8 +38,18 @@ equivalent_reduction_patterns = [
 ]
 
 
+# def test_collapsed_ellipsis_errors_out():
+#     x = numpy.zeros([1, 1, 1, 1, 1])
+#     rearrange(x, "a b c d ... ->  a b c ... d")
+#     with pytest.raises(ValueError):
+#         rearrange(x, "a b c d (...) ->  a b c ... d")
+#
+#     rearrange(x, "... ->  (...)")
+#     with pytest.raises(ValueError):
+#         rearrange(x, "(...) -> (...)")
+
 def test_collapsed_ellipsis_errors_out():
-    x = numpy.zeros([1, 1, 1, 1, 1])
+    x = Tensor(numpy.zeros([1, 1, 1, 1, 1]))
     rearrange(x, "a b c d ... ->  a b c ... d")
     with pytest.raises(ValueError):
         rearrange(x, "a b c d (...) ->  a b c ... d")
