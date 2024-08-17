@@ -498,21 +498,21 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
 
 
 
-        # except TypeError:
-        #     # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
-        #     _result = _reconstruct_from_shape_uncached(recipe, tensor.shape, axes_lengths)
-        #     (init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added) = _result
-        # if init_shapes is not None:
-        #     tensor = tensor.reshape(init_shapes)
-        # if axes_reordering is not None:
-        #     tensor = tensor.permute(axes_reordering)
-        # if len(reduced_axes) > 0:
-        #     tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes)
-        # if len(added_axes) > 0:
-        #     tensor = backend.add_axes(tensor, n_axes=n_axes_w_added, pos2len=added_axes)
-        # if final_shapes is not None:
-        #     tensor = tensor.reshape(final_shapes)
-        # return tensor
+        except TypeError:
+            # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
+            _result = _reconstruct_from_shape_uncached(recipe, tensor.shape, axes_lengths)
+            (init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added) = _result
+        if init_shapes is not None:
+            tensor = tensor.reshape(init_shapes)
+        if axes_reordering is not None:
+            tensor = tensor.permute(axes_reordering)
+        if len(reduced_axes) > 0:
+            tensor = _reduce_axes(tensor, reduction_type=reduction_type, reduced_axes=reduced_axes)
+        if len(added_axes) > 0:
+            tensor = backend.add_axes(tensor, n_axes=n_axes_w_added, pos2len=added_axes)
+        if final_shapes is not None:
+            tensor = tensor.reshape(final_shapes)
+        return tensor
 
 
 
