@@ -315,25 +315,6 @@ class NumpyBackend(AbstractBackend):
     def einsum(self, pattern, *x):
         return self.np.einsum(pattern, *x)
 
-
-class HashableTuple:
-    """Overcomes non-hashability of symbolic elements"""
-
-    def __init__(self, elements: tuple):
-        self.elements = elements
-
-    def __iter__(self):
-        for x in self.elements:
-            yield x
-
-    def __len__(self):
-        return len(self.elements)
-
-    def __getitem__(self, item):
-        return self.elements[item]
-
-    # default equality and hash is used (True only with itself, hash taken of id)
-
 class TinygradBackend(AbstractBackend):
     framework_name = "tinygrad"
 
