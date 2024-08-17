@@ -12,6 +12,13 @@ from tinygrad import Tensor
 imp_op_backends = collect_test_backends(symbolic=False, layers=False)
 sym_op_backends = collect_test_backends(symbolic=True, layers=False)
 
+
+def array_equal(x, y):
+    x = x.numpy() if type(x) == Tensor else x
+    y = y.numpy() if type(y) == Tensor else y
+    return numpy.array_equal(x, y)
+
+
 identity_patterns = [
     "...->...",
     "a b c d e-> a b c d e",
@@ -39,19 +46,8 @@ equivalent_reduction_patterns = [
     ("a b c d e -> (a b)", " ... c d e  -> (...) "),
 ]
 
-
-# def test_collapsed_ellipsis_errors_out():
-#     x = numpy.zeros([1, 1, 1, 1, 1])
-#     rearrange(x, "a b c d ... ->  a b c ... d")
-#     with pytest.raises(ValueError):
-#         rearrange(x, "a b c d (...) ->  a b c ... d")
-#
-#     rearrange(x, "... ->  (...)")
-#     with pytest.raises(ValueError):
-#         rearrange(x, "(...) -> (...)")
-
 def test_collapsed_ellipsis_errors_out():
-    x = Tensor(numpy.zeros([1, 1, 1, 1, 1]))
+    x = numpy.zeros([1, 1, 1, 1, 1])
     rearrange(x, "a b c d ... ->  a b c ... d")
     with pytest.raises(ValueError):
         rearrange(x, "a b c d (...) ->  a b c ... d")
@@ -61,30 +57,13 @@ def test_collapsed_ellipsis_errors_out():
         rearrange(x, "(...) -> (...)")
 
 
-# def test_ellipsis_ops_numpy():
-#     x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
-#     for pattern in identity_patterns:
-#         assert numpy.array_equal(x, rearrange(x, pattern)), pattern
-#
-#     for pattern1, pattern2 in equivalent_rearrange_patterns:
-#         assert numpy.array_equal(rearrange(x, pattern1), rearrange(x, pattern2))
-#
-#     for reduction in ["min", "max", "sum"]:
-#         for pattern1, pattern2 in equivalent_reduction_patterns:
-#             assert numpy.array_equal(reduce(x, pattern1, reduction=reduction), reduce(x, pattern2, reduction=reduction))
-#
-#     # now just check coincidence with numpy
-#     all_rearrange_patterns = [*identity_patterns]
-#     for pattern_pairs in equivalent_rearrange_patterns:
-#         all_rearrange_patterns.extend(pattern_pairs)
-
 def test_ellipsis_ops_tinygrad():
     x = Tensor(numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6]))
     for pattern in identity_patterns:
-        assert numpy.array_equal(x.numpy(), rearrange(x, pattern).numpy()), pattern
+        assert array_equal(x, rearrange(x, pattern)), pattern
 
     for pattern1, pattern2 in equivalent_rearrange_patterns:
-        assert numpy.array_equal(rearrange(x, pattern1).numpy(), rearrange(x, pattern2).numpy())
+        assert array_equal(rearrange(x, pattern1), rearrange(x, pattern2))
 
     # for reduction in ["min", "max", "sum"]:
     #     for pattern1, pattern2 in equivalent_reduction_patterns:
@@ -108,7 +87,7 @@ def check_op_against_numpy(backend, numpy_input, pattern, axes_lengths, reductio
             return reduce(x, pattern, reduction, **axes_lengths)
 
     numpy_result = operation(numpy_input)
-    check_equal = numpy.array_equal
+    check_equal = array_equal
     p_none_dimension = 0.5
     if is_symbolic:
         symbol_shape = [d if numpy.random.random() >= p_none_dimension else None for d in numpy_input.shape]
@@ -138,19 +117,18 @@ def test_ellipsis_ops_imperative():
             #             backend, x, pattern, axes_lengths={}, reduction=reduction, is_symbolic=is_symbolic
             #         )
 
+def test_rearrange_tinygrad():
+    import numpy as xp
+    from einops import array_api as AA
 
-# def test_rearrange_array_api():
-#     import numpy as xp
-#     from einops import array_api as AA
-#
-#     if xp.__version__ < "2.0.0":
-#         pytest.skip()
-#
-#     x = numpy.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
-#     for pattern in identity_patterns + list(itertools.chain(*equivalent_rearrange_patterns)):
-#         expected = rearrange(x, pattern)
-#         result = AA.rearrange(xp.from_dlpack(x), pattern)
-#         assert numpy.array_equal(AA.asnumpy(result + 0), expected)
+    if xp.__version__ < "2.0.0":
+        pytest.skip()
+
+    x = np.arange(2 * 3 * 4 * 5 * 6).reshape([2, 3, 4, 5, 6])
+    for pattern in identity_patterns + list(itertools.chain(*equivalent_rearrange_patterns)):
+        expected = rearrange(x, pattern)
+        result = rearrange(xp.from_dlpack(x), pattern)
+        assert array_equal(result+0, expected)
 
 
 # def test_reduce_array_api():
@@ -168,42 +146,41 @@ def test_ellipsis_ops_imperative():
 #             assert numpy.array_equal(AA.asnumpy(np.asarray(result + 0)), expected)
 #
 
-# def test_rearrange_consistency_numpy():
-#     shape = [1, 2, 3, 5, 7, 11]
-#     x = numpy.arange(numpy.prod(shape)).reshape(shape)
-#     for pattern in [
-#         "a b c d e f -> a b c d e f",
-#         "b a c d e f -> a b d e f c",
-#         "a b c d e f -> f e d c b a",
-#         "a b c d e f -> (f e) d (c b a)",
-#         "a b c d e f -> (f e d c b a)",
-#     ]:
-#         result = rearrange(x, pattern)
-#         assert len(numpy.setdiff1d(x, result)) == 0
-#         assert result.dtype == x.dtype
-#
-#     result = rearrange(x, "a b c d e f -> a (b) (c d e) f")
-#     assert numpy.array_equal(x.flatten(), result.flatten())
-#
-#     result = rearrange(x, "a aa aa1 a1a1 aaaa a11 -> a aa aa1 a1a1 aaaa a11")
-#     assert numpy.array_equal(x, result)
-#
-#     result1 = rearrange(x, "a b c d e f -> f e d c b a")
-#     result2 = rearrange(x, "f e d c b a -> a b c d e f")
-#     assert numpy.array_equal(result1, result2)
-#
-#     result = rearrange(rearrange(x, "a b c d e f -> (f d) c (e b) a"), "(f d) c (e b) a -> a b c d e f", b=2, d=5)
-#     assert numpy.array_equal(x, result)
-#
-#     sizes = dict(zip("abcdef", shape))
-#     temp = rearrange(x, "a b c d e f -> (f d) c (e b) a", **sizes)
-#     result = rearrange(temp, "(f d) c (e b) a -> a b c d e f", **sizes)
-#     assert numpy.array_equal(x, result)
-#
-#     x2 = numpy.arange(2 * 3 * 4).reshape([2, 3, 4])
-#     result = rearrange(x2, "a b c -> b c a")
-#     assert x2[1, 2, 3] == result[2, 3, 1]
-#     assert x2[0, 1, 2] == result[1, 2, 0]
+def test_rearrange_consistency_tinygrad():
+    shape = [1, 2, 3, 5, 7, 11]
+    x = numpy.arange(numpy.prod(shape)).reshape(shape)
+    for pattern in [
+        "a b c d e f -> a b c d e f",
+        "b a c d e f -> a b d e f c",
+        "a b c d e f -> f e d c b a",
+        "a b c d e f -> (f e) d (c b a)",
+        "a b c d e f -> (f e d c b a)",
+    ]:
+        result = rearrange(x, pattern)
+        assert len(numpy.setdiff1d(x, result.numpy())) == 0
+
+    result = rearrange(x, "a b c d e f -> a (b) (c d e) f")
+    assert array_equal(x.flatten(), result.flatten())
+
+    result = rearrange(x, "a aa aa1 a1a1 aaaa a11 -> a aa aa1 a1a1 aaaa a11")
+    assert array_equal(x, result)
+
+    result1 = rearrange(x, "a b c d e f -> f e d c b a")
+    result2 = rearrange(x, "f e d c b a -> a b c d e f")
+    assert array_equal(result1, result2)
+
+    result = rearrange(rearrange(x, "a b c d e f -> (f d) c (e b) a"), "(f d) c (e b) a -> a b c d e f", b=2, d=5)
+    assert array_equal(x, result)
+
+    sizes = dict(zip("abcdef", shape))
+    temp = rearrange(x, "a b c d e f -> (f d) c (e b) a", **sizes)
+    result = rearrange(temp, "(f d) c (e b) a -> a b c d e f", **sizes)
+    assert array_equal(x, result)
+
+    x2 = numpy.arange(2 * 3 * 4).reshape([2, 3, 4])
+    result = rearrange(x2, "a b c -> b c a").numpy()
+    assert x2[1, 2, 3] == result[2, 3, 1]
+    assert x2[0, 1, 2] == result[1, 2, 0]
 
 
 # def test_rearrange_permutations_numpy():
