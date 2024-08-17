@@ -473,9 +473,6 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
         recipe = _prepare_transformation_recipe(pattern, reduction, axes_names=tuple(axes_lengths), ndim=len(tensor.shape))
 
 
-
-
-
         axes_lengths=hashable_axes_lengths
         reduction_type=reduction
         try:
@@ -485,22 +482,10 @@ def reduce(tensor: Union[Tensor, List[Tensor]], pattern: str, reduction: Reducti
 
 
 
-
-
-
-
         except TypeError:
             # shape or one of passed axes lengths is not hashable (i.e. they are symbols)
             _result = _reconstruct_from_shape_uncached(recipe, tensor.shape, axes_lengths)
         
-
-
-
-
-
-
-
-
             (init_shapes, axes_reordering, reduced_axes, added_axes, final_shapes, n_axes_w_added) = _result
         if init_shapes is not None:
             tensor = tensor.reshape(init_shapes)
