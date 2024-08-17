@@ -211,41 +211,41 @@ def test_rearrange_permutations_numpy():
         assert array_equal(result, expected_result)
 
 
-# def test_reduction_imperatives():
-#     for backend in imp_op_backends:
-#         print("Reduction tests for ", backend.framework_name)
-#         for reduction in REDUCTIONS:
-#             # slight redundancy for simpler order - numpy version is evaluated multiple times
-#             input = numpy.arange(2 * 3 * 4 * 5 * 6, dtype="int64").reshape([2, 3, 4, 5, 6])
-#             if reduction in ["mean", "prod"]:
-#                 input = input / input.astype("float64").mean()
-#             test_cases = [
-#                 ["a b c d e -> ", {}, getattr(input, reduction)()],
-#                 ["a ... -> ", {}, getattr(input, reduction)()],
-#                 ["(a1 a2) ... (e1 e2) -> ", dict(a1=1, e2=2), getattr(input, reduction)()],
-#                 [
-#                     "a b c d e -> (e c) a",
-#                     {},
-#                     getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1, 2]),
-#                 ],
-#                 [
-#                     "a ... c d e -> (e c) a",
-#                     {},
-#                     getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1, 2]),
-#                 ],
-#                 [
-#                     "a b c d e ... -> (e c) a",
-#                     {},
-#                     getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1, 2]),
-#                 ],
-#                 ["a b c d e -> (e c a)", {}, getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1])],
-#                 ["(a a2) ... -> (a2 a) ...", dict(a2=1), input],
-#             ]
-#             for pattern, axes_lengths, expected_result in test_cases:
-#                 result = reduce(backend.from_numpy(input.copy()), pattern, reduction=reduction, **axes_lengths)
-#                 result = backend.to_numpy(result)
-#                 assert numpy.allclose(result, expected_result), f"Failed at {pattern}"
-#
+def test_reduction_imperatives():
+    for backend in imp_op_backends:
+        print("Reduction tests for ", backend.framework_name)
+        for reduction in ("rearrange",)
+            # slight redundancy for simpler order - numpy version is evaluated multiple times
+            input = numpy.arange(2 * 3 * 4 * 5 * 6, dtype="int64").reshape([2, 3, 4, 5, 6])
+            if reduction in ["mean", "prod"]:
+                input = input / input.astype("float64").mean()
+            test_cases = [
+                ["a b c d e -> ", {}, getattr(input, reduction)()],
+                ["a ... -> ", {}, getattr(input, reduction)()],
+                ["(a1 a2) ... (e1 e2) -> ", dict(a1=1, e2=2), getattr(input, reduction)()],
+                [
+                    "a b c d e -> (e c) a",
+                    {},
+                    getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1, 2]),
+                ],
+                [
+                    "a ... c d e -> (e c) a",
+                    {},
+                    getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1, 2]),
+                ],
+                [
+                    "a b c d e ... -> (e c) a",
+                    {},
+                    getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1, 2]),
+                ],
+                ["a b c d e -> (e c a)", {}, getattr(input, reduction)(axis=(1, 3)).transpose(2, 1, 0).reshape([-1])],
+                ["(a a2) ... -> (a2 a) ...", dict(a2=1), input],
+            ]
+            for pattern, axes_lengths, expected_result in test_cases:
+                result = reduce(backend.from_numpy(input.copy()), pattern, reduction=reduction, **axes_lengths)
+                result = backend.to_numpy(result)
+                assert numpy.allclose(result, expected_result), f"Failed at {pattern}"
+
 
 def test_reduction_symbolic():
     for backend in sym_op_backends:
